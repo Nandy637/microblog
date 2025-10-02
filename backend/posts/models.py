@@ -5,9 +5,9 @@ from django.db import models
 User = settings.AUTH_USER_MODEL
 
 class Post(models.Model):
-    author = models.ForeignKey(User, on_delete=models.CASCADE, related_name="posts")
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="posts")
     text = models.TextField()
-    image = models.URLField(blank=True)
+    image_url = models.URLField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     likes_count = models.PositiveIntegerField(default=0)
@@ -16,11 +16,11 @@ class Post(models.Model):
         ordering = ["-created_at"]
         indexes = [
             models.Index(fields=["-created_at"]),
-            models.Index(fields=["author", "-created_at"])
+            models.Index(fields=["user", "-created_at"])
         ]
 
     def __str__(self):
-        return f"Post by {self.author.username} at {self.created_at.strftime('%Y-%m-%d %H:%M')}"
+        return f"Post by {self.user.username} at {self.created_at.strftime('%Y-%m-%d %H:%M')}"
 
 class Follow(models.Model):
     follower = models.ForeignKey(User, on_delete=models.CASCADE, related_name="following")

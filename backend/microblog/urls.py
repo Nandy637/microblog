@@ -3,8 +3,8 @@
 from django.contrib import admin
 from django.urls import path, include
 from django.views.generic.base import RedirectView
-from posts.views import RegisterView, MeView  # Corrected import
-from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+from posts.views import RegisterView, MeView, MyTokenObtainPairView  # Corrected import
+from rest_framework_simplejwt.views import TokenRefreshView
 
 urlpatterns = [
     # Redirect the root URL to the API base path
@@ -15,7 +15,7 @@ urlpatterns = [
 
     # Auth and user endpoints
     path('api/register/', RegisterView.as_view(), name="register"),
-    path('api/token/', TokenObtainPairView.as_view(), name="token_obtain_pair"),
+    path('api/token/', MyTokenObtainPairView.as_view(), name="token_obtain_pair"),
     path('api/token/refresh/', TokenRefreshView.as_view(), name="token_refresh"),
     path('api/me/', MeView.as_view(), name="me"),
 ]

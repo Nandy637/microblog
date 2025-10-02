@@ -1,14 +1,14 @@
 # posts/urls.py
-from django.urls import path
-from .views import (
-    PostListCreateView, PostDetailView, toggle_like, toggle_follow, UserProfileView, api_root
-)
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
+from .views import PostViewSet, get_presigned_url, UserProfileView, FeedView
+
+router = DefaultRouter()
+router.register(r'posts', PostViewSet, basename='posts')
 
 urlpatterns = [
-    path('', api_root),  # Welcome view for /api/
-    path("posts/", PostListCreateView.as_view(), name="post-list-create"),
-    path("posts/<int:pk>/", PostDetailView.as_view(), name="post-detail"),
-    path("posts/<int:pk>/like/", toggle_like, name="post-like"),
-    path("users/<int:pk>/follow/", toggle_follow, name="user-follow"),
-    path("users/<str:username>/", UserProfileView.as_view(), name="user-profile"),
+    path("", include(router.urls)),
+    path("uploads/presign/", get_presigned_url, name="presigned-url"),
+    path('users/<str:username>/', UserProfileView.as_view(), name='user-profile'),
+    path('feed/', FeedView.as_view(), name='feed'),
 ]
