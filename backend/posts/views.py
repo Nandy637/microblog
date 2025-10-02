@@ -1,14 +1,40 @@
 # posts/views.py
+
+# Add these imports for registration/profile endpoints
+from django.contrib.auth.models import User
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.decorators import api_view, permission_classes
 from django.db.models import F, Count
 from django.db import transaction
-
+from .serializers import RegisterSerializer, UserSerializer  # Ensure RegisterSerializer exists
 from .models import Post, Like, Follow
-from .serializers import PostSerializer, UserSerializer
-from django.contrib.auth.models import User
+from .serializers import PostSerializer, RegisterSerializer, UserSerializer
+
+# Registration endpoint
+class RegisterView(generics.CreateAPIView):
+    """API endpoint for user registration."""
+    queryset = User.objects.all()
+    serializer_class = RegisterSerializer
+    permission_classes = [permissions.AllowAny]
+
+# Profile endpoint
+class MeView(APIView):
+    """API endpoint to get the current authenticated user's profile."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        return Response(UserSerializer(request.user).data)
+
+# API root welcome view
+@api_view(['GET'])
+def api_root(request):
+    return Response({
+        'posts': 'http://127.0.0.1:8000/api/posts/',
+        'users': 'http://127.0.0.1:8000/api/users/',
+        'register': 'http://127.0.0.1:8000/api/register/',
+    })
 
 class PostListCreateView(generics.ListCreateAPIView):
     queryset = Post.objects.all().select_related('author').annotate(likes_count_annotated=Count('likes'))
