@@ -23,7 +23,7 @@ interface UserProfile {
   followers_count: number
   following_count: number
   is_following: boolean
-  created_at: string
+  date_joined: string
   posts: {
     results: Post[]
     next: string | null
@@ -58,11 +58,17 @@ export default function ProfilePage() {
 
   const fetchProfile = useCallback(async () => {
     try {
-      const data = await apiRequest<UserProfile>(`/users/${username}/`, {
+      const data = await apiRequest<any>(`/users/${username}/`, {
         headers: getAuthHeaders(accessToken!),
       })
 
-      setProfile(data)
+      setProfile({
+        ...data.user,
+        is_following: data.is_following,
+        followers_count: data.follower_count,
+        following_count: data.following_count,
+        posts: data.posts,
+      })
       setPosts(data.posts.results)
       setNextCursor(data.posts.next)
     } catch (error: any) {
@@ -177,7 +183,7 @@ export default function ProfilePage() {
                   </div>
                   <div className="flex items-center gap-1 text-muted-foreground">
                     <Calendar className="h-4 w-4" />
-                    <span>Joined {format(new Date(profile.created_at), "MMMM yyyy")}</span>
+                    <span>Joined {format(new Date(profile.date_joined), "MMMM yyyy")}</span>
                   </div>
                 </div>
               </div>

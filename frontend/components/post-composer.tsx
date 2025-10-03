@@ -14,7 +14,7 @@ import { toast } from "sonner"
 import Image from "next/image"
 
 interface PostComposerProps {
-  onPostCreated?: () => void
+  onPostCreated?: (post: any) => void
 }
 
 export default function PostComposer({ onPostCreated }: PostComposerProps) {
@@ -102,7 +102,7 @@ export default function PostComposer({ onPostCreated }: PostComposerProps) {
       }
 
       // Create post
-      await apiRequest("/posts/", {
+      const newPost = await apiRequest("/posts/", {
         method: "POST",
         headers: getAuthHeaders(accessToken!),
         body: JSON.stringify({
@@ -114,7 +114,7 @@ export default function PostComposer({ onPostCreated }: PostComposerProps) {
       toast.success("Post created!")
       setContent("")
       removeImage()
-      onPostCreated?.()
+      onPostCreated?.(newPost)
     } catch (error: any) {
       toast.error(error.message || "Failed to create post")
     } finally {

@@ -85,19 +85,26 @@ export async function apiRequest<T>(endpoint: string, options: RequestInit = {})
   const url = `${API_BASE_URL}${endpoint}`
   let token = getAccessToken()
 
-  // Always try to refresh if no token
-  if (!token) {
-    token = await refreshAccessToken()
+  // Skip auth for auth endpoints
+  const skipAuth = endpoint.includes('/register/') || endpoint.includes('/token/')
+
+  if (!skipAuth) {
+    // Always try to refresh if no token
     if (!token) {
-      throw new ApiError("No valid token available", 401)
+      token = await refreshAccessToken()
+      if (!token) {
+        throw new ApiError("No valid token available", 401)
+      }
     }
   }
 
-  // Prepare headers with token
+  // Prepare headers
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...(options.headers as Record<string, string> || {}),
-    "Authorization": `Bearer ${token}`
+  }
+  if (token && !skipAuth) {
+    headers["Authorization"] = `Bearer ${token}`
   }
 
   try {

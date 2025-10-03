@@ -13,7 +13,7 @@ from django.utils.decorators import method_decorator
 from django.db.models import F, Count
 from django.db import transaction
 from .serializers import RegisterSerializer, UserSerializer, MyTokenObtainPairSerializer  # Ensure RegisterSerializer exists
-from .models import Post, Like, Follow
+from .models import Post, Like, Follow, Comment
 from .serializers import PostSerializer, RegisterSerializer, UserSerializer
 from rest_framework_simplejwt.views import TokenObtainPairView
 from .paginations import FeedCursorPagination, ProfilePostPagination
@@ -60,6 +60,23 @@ class RegisterView(generics.CreateAPIView):
     serializer_class = RegisterSerializer
     permission_classes = [permissions.AllowAny]
 
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+
+        # Generate tokens
+        from rest_framework_simplejwt.tokens import RefreshToken
+        refresh = RefreshToken.for_user(user)
+        access_token = str(refresh.access_token)
+        refresh_token = str(refresh)
+
+        return Response({
+            'access': access_token,
+            'refresh': refresh_token,
+            'user': UserSerializer(user).data
+        }, status=status.HTTP_201_CREATED)
+
 # Profile endpoint
 class MeView(APIView):
     """
@@ -88,7 +105,25 @@ class PostViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+        post = serializer.save(user=self.request.user)
+
+        # Notify followers
+        from asgiref.sync import async_to_sync
+        from channels.layers import get_channel_layer
+        from .serializers import PostSerializer
+
+        followers = Follow.objects.filter(followee=self.request.user).values_list("follower_id", flat=True)
+        channel_layer = get_channel_layer()
+        post_data = PostSerializer(post).data
+
+        for follower_id in followers:
+            async_to_sync(channel_layer.group_send)(
+                f"user_{follower_id}",
+                {
+                    "type": "feed_update",
+                    "content": post_data
+                }
+            )
 
     def get_queryset(self):
         return Post.objects.filter(user__in=[self.request.user])
@@ -157,10 +192,19 @@ class FeedView(generics.ListAPIView):
 
     def get_queryset(self):
         # 1. Get the list of users the current user is following
-        followees = Follow.objects.filter(follower=self.request.user).values_list("followee", flat=True)
+        following_users = Follow.objects.filter(follower=self.request.user).values_list("followee", flat=True)
 
-        # 2. Filter posts by these users
-        queryset = Post.objects.filter(user__in=followees).select_related('user')
+        # 2. Get users whose posts the current user has liked or commented on
+        interacted_users = set(
+            list(Like.objects.filter(user=self.request.user).values_list('post__user', flat=True)) +
+            list(Comment.objects.filter(user=self.request.user).values_list('post__user', flat=True))
+        )
+
+        # 3. Combine followed + interacted + own posts
+        related_users = set(list(following_users) + list(interacted_users) + [self.request.user.id])
+
+        # 4. Filter posts by these users
+        queryset = Post.objects.filter(user__in=related_users).select_related('user')
 
         # 3. Denormalize the likes_count for the response
         queryset = queryset.annotate(likes_count_annotated=Count('likes'))
@@ -214,9 +258,10 @@ class UserProfileView(APIView):
                 'is_following': is_following,
                 'follower_count': profile_user.followers.count(),
                 'following_count': profile_user.following.count(),
-                'posts': posts_serializer.data,
-                'posts_next': paginator.get_next_link(),
-                'posts_previous': paginator.get_previous_link(),
+                'posts': {
+                    'results': posts_serializer.data,
+                    'next': paginator.get_next_link(),
+                },
             })
         except User.DoesNotExist:
             return Response(status=status.HTTP_404_NOT_FOUND)

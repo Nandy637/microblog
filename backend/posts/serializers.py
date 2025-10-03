@@ -54,7 +54,7 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ["id", "username", "email"]
+        fields = ["id", "username", "email", "date_joined"]
 
 
 # Add this new class for registration
@@ -69,9 +69,24 @@ class RegisterSerializer(serializers.ModelSerializer):
         return User.objects.create_user(**validated_data)
 
 class PostSerializer(serializers.ModelSerializer):
-    user = serializers.ReadOnlyField(source="user.username")
+    author = serializers.SerializerMethodField()
     content = serializers.CharField(source="text")
+    likes_count = serializers.ReadOnlyField()
+    is_liked = serializers.SerializerMethodField()
 
     class Meta:
         model = Post
-        fields = ["id", "user", "content", "image_url", "created_at", "updated_at"]
+        fields = ["id", "author", "content", "image_url", "created_at", "likes_count", "is_liked"]
+
+    def get_author(self, obj):
+        return {
+            "id": obj.user.id,
+            "username": obj.user.username,
+            "avatar_url": getattr(obj.user, 'avatar_url', None)
+        }
+
+    def get_is_liked(self, obj):
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            return obj.likes.filter(user=request.user).exists()
+        return False

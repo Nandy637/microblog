@@ -34,13 +34,14 @@ export default function FeedPage() {
   const router = useRouter()
   const { protectedFetch } = useProtectedApi()
 
-  const { accessToken } = useAppSelector((state) => state.auth)
+  const { accessToken, user } = useAppSelector((state) => state.auth)
 
   const [posts, setPosts] = useState<Post[]>([])
   const [nextCursor, setNextCursor] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [socket, setSocket] = useState<WebSocket | null>(null)
 
   useEffect(() => {
     // Wait for both accessToken and protectedFetch to be available
@@ -85,6 +86,32 @@ export default function FeedPage() {
     loadFeed()
   }, [accessToken, protectedFetch, router])
 
+  // WebSocket connection
+  useEffect(() => {
+    if (!user || !accessToken) return
+
+    const ws = new WebSocket(`ws://127.0.0.1:8001/ws/feed/`)
+
+    ws.onopen = () => {
+      console.log('WebSocket connected')
+    }
+
+    ws.onmessage = (event) => {
+      const newPost = JSON.parse(event.data)
+      setPosts((prev) => [newPost, ...prev])
+    }
+
+    ws.onclose = () => {
+      console.log('WebSocket disconnected')
+    }
+
+    setSocket(ws)
+
+    return () => {
+      ws.close()
+    }
+  }, [user, accessToken])
+
   const handleLoadMore = async () => {
     if (!nextCursor || isLoadingMore) return
 
@@ -106,13 +133,9 @@ export default function FeedPage() {
     }
   }
 
-  const handlePostCreated = () => {
-    // Refresh feed
-    if (accessToken) {
-      protectedFetch<FeedResponse>("/feed/").then((data) => {
-        if (data) setPosts(data.results)
-      }).catch(console.error)
-    }
+  const handlePostCreated = (newPost: Post) => {
+    // Prepend the new post to the feed
+    setPosts((prev) => [newPost, ...prev])
   }
 
   const handlePostUpdated = () => {

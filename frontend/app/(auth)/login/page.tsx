@@ -2,22 +2,18 @@
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
 
-// Centralized request function to handle tokens and errors
+// Centralized request function for auth endpoints without token
 export async function apiRequest<T>(
-    method: 'GET' | 'POST' | 'PATCH' | 'DELETE', 
-    endpoint: string, 
+    method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
+    endpoint: string,
     data: any = null
 ): Promise<T> {
-    const token = localStorage.getItem('accessToken');
     let finalEndpoint = endpoint.startsWith('/api') ? endpoint : `/api${endpoint}`;
     const url = `${API_BASE_URL}${finalEndpoint}`;
 
     const headers: HeadersInit = {
         'Content-Type': 'application/json',
     };
-    if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-    }
 
     const config: RequestInit = {
         method,
