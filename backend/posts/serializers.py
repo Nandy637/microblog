@@ -70,9 +70,10 @@ class RegisterSerializer(serializers.ModelSerializer):
 
 class PostSerializer(serializers.ModelSerializer):
     author = serializers.SerializerMethodField()
-    content = serializers.CharField(source="text")
+    content = serializers.CharField(source="text", allow_blank=True)
     likes_count = serializers.ReadOnlyField()
     is_liked = serializers.SerializerMethodField()
+    image_url = serializers.URLField(required=False, allow_null=True, allow_blank=True)
 
     class Meta:
         model = Post

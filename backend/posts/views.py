@@ -104,6 +104,17 @@ class PostViewSet(viewsets.ModelViewSet):
     serializer_class = PostSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    def create(self, request, *args, **kwargs):
+        # Explicit create to capture and return validation errors clearly
+        serializer = self.get_serializer(data=request.data, context={"request": request})
+        if not serializer.is_valid():
+            # Log errors to backend console for quick debugging during dev
+            print("DEBUG CREATE Post errors:", serializer.errors)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        self.perform_create(serializer)
+        headers = {}
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
     def perform_create(self, serializer):
         post = serializer.save(user=self.request.user)
 
@@ -114,7 +125,7 @@ class PostViewSet(viewsets.ModelViewSet):
 
         followers = Follow.objects.filter(followee=self.request.user).values_list("follower_id", flat=True)
         channel_layer = get_channel_layer()
-        post_data = PostSerializer(post).data
+        post_data = PostSerializer(post, context={"request": self.request}).data
 
         for follower_id in followers:
             async_to_sync(channel_layer.group_send)(
@@ -206,35 +217,47 @@ class FeedView(generics.ListAPIView):
         # 4. Filter posts by these users
         queryset = Post.objects.filter(user__in=related_users).select_related('user')
 
-        # 3. Denormalize the likes_count for the response
+        # 5. Denormalize the likes_count for the response
         queryset = queryset.annotate(likes_count_annotated=Count('likes'))
 
-        # 4. Order the posts by creation date to prepare for cursor pagination
+        # 6. Order the posts by creation date to prepare for cursor pagination
         return queryset.order_by('-created_at')
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
         context['request'] = self.request
         return context
-@api_view(['GET'])
+@api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
-def get_presigned_url(request):
-    filename = request.GET.get('filename')
-    file_type = request.GET.get('file_type')
-    if not filename or not file_type:
-        return Response({'error': 'filename and file_type required'}, status=400)
+def upload_image(request):
+    if 'image' not in request.FILES:
+        return Response({'error': 'No image file provided'}, status=400)
 
-    s3 = boto3.client('s3',
-                      aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-                      aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-                      region_name=settings.AWS_S3_REGION_NAME)
-    presigned_url = s3.generate_presigned_url('put_object',
-                                               Params={'Bucket': settings.AWS_STORAGE_BUCKET_NAME,
-                                                       'Key': f'user_uploads/{filename}',
-                                                       'ContentType': file_type},
-                                               ExpiresIn=3600)
-    public_url = f"https://{settings.AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com/user_uploads/{filename}"
-    return Response({'presigned_url': presigned_url, 'public_url': public_url})
+    image_file = request.FILES['image']
+
+    # Validate file type
+    allowed_types = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+    if image_file.content_type not in allowed_types:
+        return Response({'error': 'Invalid file type'}, status=400)
+
+    # Validate file size (5MB limit)
+    if image_file.size > 5 * 1024 * 1024:
+        return Response({'error': 'File too large'}, status=400)
+
+    # Generate unique filename
+    import uuid
+    import os
+    from django.conf import settings
+    from django.core.files.storage import default_storage
+
+    ext = os.path.splitext(image_file.name)[1]
+    filename = f"user_uploads/{uuid.uuid4()}{ext}"
+
+    # Save file
+    file_path = default_storage.save(filename, image_file)
+    public_url = default_storage.url(file_path)
+
+    return Response({'public_url': public_url})
 
 
 class UserProfileView(APIView):

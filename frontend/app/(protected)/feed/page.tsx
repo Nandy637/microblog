@@ -86,29 +86,57 @@ export default function FeedPage() {
     loadFeed()
   }, [accessToken, protectedFetch, router])
 
-  // WebSocket connection
+  // WebSocket connection with retry
   useEffect(() => {
     if (!user || !accessToken) return
 
-    const ws = new WebSocket(`ws://127.0.0.1:8001/ws/feed/`)
+    let ws: WebSocket | null = null
+    let reconnectTimeout: NodeJS.Timeout
+    let reconnectAttempts = 0
+    const maxReconnectAttempts = 5
+    const reconnectDelay = 2000 // 2 seconds
 
-    ws.onopen = () => {
-      console.log('WebSocket connected')
+    const connect = () => {
+      if (reconnectAttempts >= maxReconnectAttempts) {
+        console.error('Max WebSocket reconnect attempts reached')
+        return
+      }
+
+      ws = new WebSocket(`ws://127.0.0.1:8001/ws/feed/`)
+
+      ws.onopen = () => {
+        console.log('WebSocket connected')
+        reconnectAttempts = 0 // Reset on successful connection
+      }
+
+      ws.onmessage = (event) => {
+        const newPost = JSON.parse(event.data)
+        setPosts((prev) => [newPost, ...prev])
+      }
+
+      ws.onclose = () => {
+        console.log('WebSocket disconnected')
+        // Attempt to reconnect
+        reconnectAttempts++
+        reconnectTimeout = setTimeout(connect, reconnectDelay)
+      }
+
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error)
+      }
+
+      setSocket(ws)
     }
 
-    ws.onmessage = (event) => {
-      const newPost = JSON.parse(event.data)
-      setPosts((prev) => [newPost, ...prev])
-    }
-
-    ws.onclose = () => {
-      console.log('WebSocket disconnected')
-    }
-
-    setSocket(ws)
+    connect()
 
     return () => {
-      ws.close()
+      if (ws) {
+        ws.close()
+      }
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout)
+      }
     }
   }, [user, accessToken])
 

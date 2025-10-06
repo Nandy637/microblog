@@ -49,30 +49,19 @@ export default function PostComposer({ onPostCreated }: PostComposerProps) {
     }
   }
 
-  const uploadImageToS3 = async (file: File): Promise<string> => {
-    // Get presigned URL
-    const { presigned_url, public_url } = await apiRequest<{ presigned_url: string; public_url: string }>(
-      `/uploads/presign/?filename=${encodeURIComponent(file.name)}&file_type=${encodeURIComponent(file.type)}`,
+  const uploadImage = async (file: File): Promise<string> => {
+    const formData = new FormData()
+    formData.append('image', file)
+
+    const { public_url } = await apiRequest<{ public_url: string }>(
+      "/uploads/",
       {
-        method: "GET",
+        method: "POST",
         headers: getAuthHeaders(accessToken!),
+        body: formData,
       }
     )
 
-    // Upload to S3 using presigned URL
-    const uploadResponse = await fetch(presigned_url, {
-      method: "PUT",
-      body: file,
-      headers: {
-        "Content-Type": file.type,
-      },
-    })
-
-    if (!uploadResponse.ok) {
-      throw new Error("Failed to upload image")
-    }
-
-    // Return the public S3 URL
     return public_url
   }
 
@@ -92,7 +81,7 @@ export default function PostComposer({ onPostCreated }: PostComposerProps) {
       // Upload image if present
       if (imageFile) {
         try {
-          imageUrl = await uploadImageToS3(imageFile)
+          imageUrl = await uploadImage(imageFile)
         } catch (uploadError: any) {
           // If image upload fails, warn but continue with text-only post
           console.warn("Image upload failed:", uploadError)
@@ -101,12 +90,19 @@ export default function PostComposer({ onPostCreated }: PostComposerProps) {
         }
       }
 
+      // Check again after upload attempt
+      const finalContent = content.trim()
+      if (!finalContent && !imageUrl) {
+        toast.error("Post cannot be empty")
+        return
+      }
+
       // Create post
       const newPost = await apiRequest("/posts/", {
         method: "POST",
         headers: getAuthHeaders(accessToken!),
         body: JSON.stringify({
-          content: content.trim(),
+          content: finalContent,
           image_url: imageUrl,
         }),
       })
